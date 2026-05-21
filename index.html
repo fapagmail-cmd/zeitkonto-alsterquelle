@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#121824">
+  <title>Hausmeister Zeiterfassung</title>
+  
+  <!-- Fonts: Outfit (modern titles) & Inter (UI text) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  
+  <!-- Inline script to prevent FOUC / check dark mode -->
+  <script>
+    const colorScheme = localStorage.getItem("color-scheme") || "dark";
+    document.documentElement.setAttribute("data-theme", colorScheme);
+  </script>
+</head>
+<body>
+
+  <!-- Top App Bar (Visible on all tabs) -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="app-logo">
+        <span class="logo-emoji">🛠️</span>
+        <div class="logo-text">
+          <h1>Hausmeister</h1>
+          <p>Zeiterfassung</p>
+        </div>
+      </div>
+      <div id="quick-status-badge" class="status-badge idle">
+        <span class="badge-dot"></span>
+        <span class="badge-text">Bereit</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Scrollable Content Container -->
+  <main class="app-content">
+    
+    <!-- Tab 1: Dashboard -->
+    <section id="tab-dashboard" class="tab-pane active">
+      <!-- Active Timer Card -->
+      <div class="card timer-card">
+        <div class="timer-card-bg"></div>
+        <div class="timer-header">
+          <span class="timer-title">Aktiver Timer</span>
+          <span id="timer-state-label" class="timer-status">Bereit</span>
+        </div>
+        <div class="timer-display">
+          <span id="timer-hours">00</span>:<span id="timer-minutes">00</span>:<span id="timer-seconds">00</span>
+        </div>
+        <div class="timer-category-selector">
+          <label for="timer-category">Tätigkeit wählen:</label>
+          <select id="timer-category" class="custom-select">
+            <option value="garten" data-emoji="🌿">🌿 Rasenmähen / Gartenarbeit</option>
+            <option value="reparatur" data-emoji="🛠️">🛠️ Reparaturen</option>
+            <option value="wartung" data-emoji="🔧" selected>🔧 Wartung & Inspektion</option>
+            <option value="reinigung" data-emoji="🧹">🧹 Reinigung & Pflege</option>
+            <option value="muell" data-emoji="🗑️">🗑️ Mülltonnen-Dienst</option>
+            <option value="winter" data-emoji="❄️">❄️ Winterdienst</option>
+            <option value="sonstiges" data-emoji="📝">📝 Sonstiges</option>
+          </select>
+        </div>
+        <div class="timer-controls">
+          <button id="btn-timer-toggle" class="btn btn-primary btn-timer-start">
+            <span class="btn-icon">▶</span>
+            <span class="btn-text">Timer Starten</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Add Buttons -->
+      <div class="section-title-wrap">
+        <h2>Schnellerfassung</h2>
+        <p>Tippe, um direkt einen Eintrag mit fester Zeit hinzuzufügen</p>
+      </div>
+      
+      <div class="quick-add-grid">
+        <button class="quick-add-btn" data-category="garten">
+          <span class="quick-add-emoji">🌿</span>
+          <span class="quick-add-name">Garten</span>
+        </button>
+        <button class="quick-add-btn" data-category="reparatur">
+          <span class="quick-add-emoji">🛠️</span>
+          <span class="quick-add-name">Reparatur</span>
+        </button>
+        <button class="quick-add-btn" data-category="wartung">
+          <span class="quick-add-emoji">🔧</span>
+          <span class="quick-add-name">Wartung</span>
+        </button>
+        <button class="quick-add-btn" data-category="reinigung">
+          <span class="quick-add-emoji">🧹</span>
+          <span class="quick-add-name">Reinigung</span>
+        </button>
+        <button class="quick-add-btn" data-category="muell">
+          <span class="quick-add-emoji">🗑️</span>
+          <span class="quick-add-name">Mülltonnen</span>
+        </button>
+        <button class="quick-add-btn" data-category="winter">
+          <span class="quick-add-emoji">❄️</span>
+          <span class="quick-add-name">Winterdienst</span>
+        </button>
+      </div>
+
+      <!-- Manual Log Option -->
+      <div class="manual-log-trigger">
+        <button id="btn-open-manual-dialog" class="btn btn-secondary btn-full">
+          <span>➕</span> Manuelle Zeiterfassung eintragen
+        </button>
+      </div>
+    </section>
+
+    <!-- Tab 2: Historie -->
+    <section id="tab-history" class="tab-pane">
+      <div class="history-controls-card card">
+        <div class="filter-header">
+          <h2>Filter & Auswertung</h2>
+        </div>
+        <div class="filter-row">
+          <div class="filter-group">
+            <label for="filter-month">Monat:</label>
+            <select id="filter-month" class="custom-select-small">
+              <!-- Dynamically populated -->
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="filter-category">Kategorie:</label>
+            <select id="filter-category" class="custom-select-small">
+              <option value="all">Alle Kategorien</option>
+              <option value="garten">🌿 Gartenarbeit</option>
+              <option value="reparatur">🛠️ Reparaturen</option>
+              <option value="wartung">🔧 Wartung</option>
+              <option value="reinigung">🧹 Reinigung</option>
+              <option value="muell">🗑️ Mülltonnen</option>
+              <option value="winter">❄️ Winterdienst</option>
+              <option value="sonstiges">📝 Sonstiges</option>
+            </select>
+          </div>
+        </div>
+        
+        <!-- Summary Dashboard Inside History -->
+        <div class="summary-stats-grid">
+          <div class="stat-card">
+            <span class="stat-label">Gesamtstunden</span>
+            <span id="stat-total-hours" class="stat-value">0,0 Std.</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Einträge</span>
+            <span id="stat-total-count" class="stat-value">0</span>
+          </div>
+        </div>
+
+        <button id="btn-print-report" class="btn btn-accent btn-full">
+          <span>📄</span> Monatsbericht als PDF erstellen
+        </button>
+      </div>
+
+      <!-- List of Entries -->
+      <div class="section-title-wrap">
+        <h2>Zeiteinträge</h2>
+      </div>
+      
+      <div id="entries-container" class="entries-list">
+        <!-- Dynamically populated or empty state -->
+        <div class="empty-state">
+          <div class="empty-emoji">🏜️</div>
+          <p>Noch keine Einträge erfasst oder keine passenden Filter gefunden.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 3: Einstellungen -->
+    <section id="tab-settings" class="tab-pane">
+      <div class="card settings-card">
+        <h2>App & Datenverwaltung</h2>
+        <p class="settings-desc">Deine Daten werden sicher und ausschließlich lokal auf deinem Gerät gespeichert.</p>
+        
+        <hr class="divider">
+        
+        <div class="settings-action-list">
+          <div class="settings-action-item">
+            <div class="action-info">
+              <h3>Daten-Export (Excel-kompatibel)</h3>
+              <p>Erstelle ein CSV-Backup aller deiner aufgezeichneten Zeiten.</p>
+            </div>
+            <button id="btn-export-csv" class="btn btn-secondary">Exportieren</button>
+          </div>
+
+          <div class="settings-action-item">
+            <div class="action-info">
+              <h3>Daten-Import</h3>
+              <p>Lade zuvor exportierte CSV/JSON-Daten wieder hoch.</p>
+            </div>
+            <div class="file-upload-wrap">
+              <label for="import-file" class="btn btn-secondary btn-upload">
+                <span>Datei wählen</span>
+                <input type="file" id="import-file" accept=".json,.csv" style="display:none;">
+              </label>
+            </div>
+          </div>
+          
+          <div class="settings-action-item">
+            <div class="action-info">
+              <h3>Farbschema</h3>
+              <p>Wechsle zwischen hellem und dunklem Erscheinungsbild.</p>
+            </div>
+            <button id="btn-toggle-theme" class="btn btn-secondary">
+              Theme wechseln
+            </button>
+          </div>
+
+          <div class="settings-action-item danger-zone">
+            <div class="action-info">
+              <h3 class="danger-text">Alle Daten löschen</h3>
+              <p>Löscht unwiderruflich alle aufgezeichneten Zeiteinträge.</p>
+            </div>
+            <button id="btn-clear-data" class="btn btn-danger">Zurücksetzen</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="about-card card">
+        <h3>System-Informationen</h3>
+        <ul class="system-info-list">
+          <li><strong>Offline-Modus:</strong> <span id="pwa-offline-status" class="pwa-status offline">Nicht bereit</span></li>
+          <li><strong>App-Version:</strong> <span>1.0.0 (iPhone 12 Opt.)</span></li>
+        </ul>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Bottom Navigation Bar (Fixed for mobile) -->
+  <nav class="app-nav">
+    <button class="nav-tab active" data-tab="dashboard">
+      <span class="nav-icon">⏱️</span>
+      <span class="nav-label">Erfassung</span>
+    </button>
+    <button class="nav-tab" data-tab="history">
+      <span class="nav-icon">📅</span>
+      <span class="nav-label">Historie</span>
+    </button>
+    <button class="nav-tab" data-tab="settings">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label">Optionen</span>
+    </button>
+  </nav>
+
+  <!-- Modals & Dialogs (using standard semantic dialog elements, or overlay cards) -->
+  
+  <!-- Add/Edit Entry Dialog -->
+  <div id="dialog-log-entry" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-title">Zeiteintrag erfassen</h3>
+        <button id="btn-close-modal" class="btn-close-circle">&times;</button>
+      </div>
+      <form id="form-log-entry" class="modal-form">
+        <input type="hidden" id="entry-id">
+        
+        <div class="form-group">
+          <label for="form-category">Kategorie</label>
+          <select id="form-category" class="custom-select" required>
+            <option value="garten">🌿 Rasenmähen / Gartenarbeit</option>
+            <option value="reparatur">🛠️ Reparaturen</option>
+            <option value="wartung">🔧 Wartung & Inspektion</option>
+            <option value="reinigung">🧹 Reinigung & Pflege</option>
+            <option value="muell">🗑️ Mülltonnen-Dienst</option>
+            <option value="winter">❄️ Winterdienst</option>
+            <option value="sonstiges">📝 Sonstiges</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="form-date">Datum</label>
+          <input type="date" id="form-date" class="custom-input" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="form-start">Startzeit</label>
+            <input type="time" id="form-start" class="custom-input" required>
+          </div>
+          <div class="form-group">
+            <label for="form-end">Endzeit</label>
+            <input type="time" id="form-end" class="custom-input" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="form-pause">Pause (in Minuten)</label>
+          <input type="number" id="form-pause" class="custom-input" min="0" value="0">
+        </div>
+
+        <div class="form-group">
+          <label for="form-notes">Beschreibung / Tätigkeit</label>
+          <textarea id="form-notes" class="custom-textarea" placeholder="Zusätzliche Notizen zur Arbeit..." rows="3"></textarea>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" id="btn-cancel-modal" class="btn btn-secondary">Abbrechen</button>
+          <button type="submit" class="btn btn-primary">Speichern</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- PDF Print Container (Hidden on Screen, visible on Print) -->
+  <div id="print-container" class="print-only">
+    <div class="print-header">
+      <h1>Hausmeister-Tätigkeitsbericht</h1>
+      <p id="print-report-period">Monat: </p>
+    </div>
+    
+    <div class="print-summary-box">
+      <div><strong>Berichtsdatum:</strong> <span id="print-report-date"></span></div>
+      <div><strong>Gesamtstunden:</strong> <span id="print-total-hours"></span> Std.</div>
+    </div>
+    
+    <table class="print-table">
+      <thead>
+        <tr>
+          <th style="width: 15%">Datum</th>
+          <th style="width: 25%">Kategorie</th>
+          <th style="width: 20%">Uhrzeit</th>
+          <th style="width: 10%">Pause</th>
+          <th style="width: 10%">Dauer</th>
+          <th style="width: 20%">Tätigkeit / Bemerkung</th>
+        </tr>
+      </thead>
+      <tbody id="print-table-body">
+        <!-- Dynamically populated on print command -->
+      </tbody>
+    </table>
+    
+    <div class="print-signatures">
+      <div class="signature-line">
+        <p>Unterschrift Hausmeister</p>
+      </div>
+      <div class="signature-line">
+        <p>Unterschrift Auftraggeber</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
