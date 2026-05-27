@@ -21,7 +21,11 @@ let state = {
   filters: {
     month: 'all', // 'YYYY-MM' or 'all'
     category: 'all'
-  }
+  },
+  // Online Sync Configuration
+  syncEnabled: false,
+  syncUrl: '',
+  lastSyncTime: null
 };
 
 // --- DOM Elements ---
@@ -67,7 +71,14 @@ const DOM = {
   // Settings Elements
   btnExportCsv: document.getElementById('btn-export-csv'),
   importFileInput: document.getElementById('import-file'),
-  btnToggleTheme: document.getElementById('btn-toggle-theme'),
+  themeSelectBtns: document.querySelectorAll('.theme-select-btn'),
+  syncEnableToggle: document.getElementById('sync-enable-toggle'),
+  syncDetailsContainer: document.getElementById('sync-details-container'),
+  syncServerUrl: document.getElementById('sync-server-url'),
+  btnSyncNow: document.getElementById('btn-sync-now'),
+  syncStatusBadge: document.getElementById('sync-status-badge'),
+  syncStatusText: document.getElementById('sync-status-text'),
+  syncLastTime: document.getElementById('sync-last-time'),
   btnClearData: document.getElementById('btn-clear-data'),
   pwaOfflineStatus: document.getElementById('pwa-offline-status'),
   
@@ -116,14 +127,23 @@ function registerServiceWorker() {
 // --- Theme Management ---
 function initAppTheme() {
   const currentTheme = localStorage.getItem('color-scheme') || 'dark';
-  document.documentElement.setAttribute('data-theme', currentTheme);
+  setAppTheme(currentTheme);
 }
 
-function toggleTheme() {
-  const currentTheme = document.documentElement.getAttribute('data-theme');
-  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', newTheme);
-  localStorage.setItem('color-scheme', newTheme);
+function setAppTheme(themeName) {
+  document.documentElement.setAttribute('data-theme', themeName);
+  localStorage.setItem('color-scheme', themeName);
+  
+  // Update active class on buttons
+  if (DOM.themeSelectBtns) {
+    DOM.themeSelectBtns.forEach(btn => {
+      if (btn.getAttribute('data-theme-val') === themeName) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+  }
 }
 
 // --- Event Listeners Setup ---
@@ -167,8 +187,20 @@ function setupEventListeners() {
   DOM.btnPrintReport.addEventListener('click', handlePrintReport);
   DOM.btnExportCsv.addEventListener('click', exportToCSV);
   DOM.importFileInput.addEventListener('change', handleImportFile);
-  DOM.btnToggleTheme.addEventListener('click', toggleTheme);
   DOM.btnClearData.addEventListener('click', clearAllData);
+
+  // Theme Selector Buttons
+  DOM.themeSelectBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const themeVal = btn.getAttribute('data-theme-val');
+      setAppTheme(themeVal);
+    });
+  });
+
+  // Sync Controls
+  DOM.syncEnableToggle.addEventListener('change', handleSyncToggle);
+  DOM.syncServerUrl.addEventListener('input', handleSyncUrlChange);
+  DOM.btnSyncNow.addEventListener('click', () => syncWithServer(true));
   
   // Handle click outside modal card to close
   DOM.dialogLogEntry.addEventListener('click', (e) => {
@@ -180,11 +212,32 @@ function setupEventListeners() {
 
 // --- Data Layer (LocalStorage) ---
 function loadData() {
+  // Load sync configurations first
+  state.syncEnabled = localStorage.getItem('zeitkonto_sync_enabled') === 'true';
+  state.syncUrl = localStorage.getItem('zeitkonto_sync_url') || window.location.origin;
+  
+  const storedLastSync = localStorage.getItem('zeitkonto_last_sync_time');
+  state.lastSyncTime = storedLastSync ? parseInt(storedLastSync) : null;
+
   const storedEntries = localStorage.getItem('zeitkonto_entries');
   if (storedEntries) {
     try {
       state.entries = JSON.parse(storedEntries);
-      // Sort entries by date descending, then start time descending
+      
+      // Ensure sync fields are populated on loaded entries (migration)
+      let needsSave = false;
+      state.entries.forEach(e => {
+        if (e.lastModified === undefined) {
+          e.lastModified = Date.now() - 60000; // slightly in the past
+          needsSave = true;
+        }
+        if (e.deleted === undefined) {
+          e.deleted = false;
+          needsSave = true;
+        }
+      });
+      if (needsSave) saveData();
+      
       sortEntries();
     } catch (e) {
       console.error('Fehler beim Laden der Einträge:', e);
@@ -202,10 +255,27 @@ function loadData() {
       state.activeTimer = null;
     }
   }
+
+  // Trigger sync on app launch if enabled
+  if (state.syncEnabled) {
+    setTimeout(() => {
+      syncWithServer();
+    }, 100);
+  }
 }
 
 function saveData() {
   localStorage.setItem('zeitkonto_entries', JSON.stringify(state.entries));
+}
+
+function saveSyncConfig() {
+  localStorage.setItem('zeitkonto_sync_enabled', state.syncEnabled);
+  localStorage.setItem('zeitkonto_sync_url', state.syncUrl);
+  if (state.lastSyncTime) {
+    localStorage.setItem('zeitkonto_last_sync_time', state.lastSyncTime);
+  } else {
+    localStorage.removeItem('zeitkonto_last_sync_time');
+  }
 }
 
 function sortEntries() {
@@ -436,7 +506,9 @@ function handleFormSubmit(e) {
     end,
     pause,
     notes,
-    duration
+    duration,
+    lastModified: Date.now(),
+    deleted: false
   };
   
   if (id) {
@@ -452,6 +524,11 @@ function handleFormSubmit(e) {
   
   saveData();
   sortEntries();
+
+  // Trigger background sync if enabled
+  if (state.syncEnabled) {
+    syncWithServer();
+  }
   closeModal();
   
   // Reset Form
@@ -486,7 +563,7 @@ function populateFilterDropdowns() {
   // Extract unique Year-Month combinations from entries
   const months = new Set();
   state.entries.forEach(entry => {
-    if (entry.date) {
+    if (entry.date && !entry.deleted) {
       months.add(entry.date.substring(0, 7)); // Takes 'YYYY-MM'
     }
   });
@@ -530,6 +607,7 @@ function renderHistory() {
   
   // Apply filtering
   const filtered = state.entries.filter(entry => {
+    if (entry.deleted) return false;
     const matchCat = state.filters.category === 'all' || entry.category === state.filters.category;
     const matchMonth = state.filters.month === 'all' || entry.date.startsWith(state.filters.month);
     return matchCat && matchMonth;
@@ -625,10 +703,19 @@ function editEntry(id) {
 
 function deleteEntry(id) {
   if (confirm('Möchtest du diesen Zeiteintrag wirklich unwiderruflich löschen?')) {
-    state.entries = state.entries.filter(e => e.id !== id);
-    saveData();
-    populateFilterDropdowns();
-    renderHistory();
+    const entry = state.entries.find(e => e.id === id);
+    if (entry) {
+      entry.deleted = true;
+      entry.lastModified = Date.now();
+      saveData();
+      populateFilterDropdowns();
+      renderHistory();
+      
+      // Sync deletion to server immediately in background if sync is active
+      if (state.syncEnabled) {
+        syncWithServer();
+      }
+    }
   }
 }
 
@@ -636,6 +723,7 @@ function deleteEntry(id) {
 function handlePrintReport() {
   // Only print the currently filtered entries in history
   const filtered = state.entries.filter(entry => {
+    if (entry.deleted) return false;
     const matchCat = state.filters.category === 'all' || entry.category === state.filters.category;
     const matchMonth = state.filters.month === 'all' || entry.date.startsWith(state.filters.month);
     return matchCat && matchMonth;
@@ -690,7 +778,8 @@ function handlePrintReport() {
 
 // --- Backup & Settings Controller ---
 function exportToCSV() {
-  if (state.entries.length === 0) {
+  const activeEntries = state.entries.filter(e => !e.deleted);
+  if (activeEntries.length === 0) {
     alert('Es gibt keine Daten zum Exportieren.');
     return;
   }
@@ -699,7 +788,7 @@ function exportToCSV() {
   let csvContent = 'Datum;Kategorie;Startzeit;Endzeit;Pause (Minuten);Dauer (Stunden);Notiz/Bemerkung\r\n';
   
   // Rows
-  state.entries.forEach(entry => {
+  activeEntries.forEach(entry => {
     const cat = CATEGORIES[entry.category]?.label || entry.category;
     const row = [
       formatDateGerman(entry.date),
@@ -739,7 +828,14 @@ function handleImportFile(e) {
         const imported = JSON.parse(event.target.result);
         if (Array.isArray(imported)) {
           if (confirm(`Möchtest du ${imported.length} Einträge importieren? Bestehende Einträge werden beibehalten.`)) {
-            state.entries = [...state.entries, ...imported];
+            // Process imported items to ensure they have sync variables
+            const processedImported = imported.map(e => ({
+              ...e,
+              lastModified: e.lastModified || Date.now(),
+              deleted: e.deleted !== undefined ? e.deleted : false
+            }));
+            
+            state.entries = [...state.entries, ...processedImported];
             // Deduplicate by ID just in case
             const ids = new Set();
             state.entries = state.entries.filter(e => {
@@ -823,7 +919,9 @@ function handleImportFile(e) {
               end,
               pause,
               notes,
-              duration
+              duration,
+              lastModified: Date.now(),
+              deleted: false
             });
           }
         }
@@ -854,11 +952,25 @@ function handleImportFile(e) {
 function clearAllData() {
   if (confirm('Möchtest du wirklich ALLE deine Zeiteinträge unwiderruflich löschen? Dieser Schritt kann nicht rückgängig gemacht werden.')) {
     if (confirm('Bist du absolut sicher? Alle Daten gehen verloren!')) {
-      state.entries = [];
-      saveData();
-      populateFilterDropdowns();
-      renderHistory();
-      alert('Alle Daten wurden gelöscht.');
+      // If sync is enabled, we mark all entries as deleted and sync, or we just completely reset both local and server
+      if (state.syncEnabled && confirm('Möchtest du die Daten auch vom Sync-Server löschen?')) {
+        state.entries.forEach(e => {
+          e.deleted = true;
+          e.lastModified = Date.now();
+        });
+        saveData();
+        syncWithServer().then(() => {
+          state.entries = [];
+          saveData();
+          renderAll();
+          alert('Alle Daten wurden lokal und auf dem Server gelöscht.');
+        });
+      } else {
+        state.entries = [];
+        saveData();
+        renderAll();
+        alert('Lokale Daten gelöscht. Falls Sync aktiv ist, werden diese beim nächsten Sync eventuell wiederhergestellt.');
+      }
     }
   }
 }
@@ -868,4 +980,144 @@ function renderAll() {
   renderTimerUI();
   populateFilterDropdowns();
   renderHistory();
+  updateSyncUI();
 }
+
+// --- Synchronization Controller ---
+let isSyncing = false;
+
+function updateSyncUI(status, message) {
+  // Check if DOM is available
+  if (!DOM.syncEnableToggle) return;
+
+  if (!state.syncEnabled) {
+    DOM.syncDetailsContainer.classList.add('disabled');
+    DOM.syncEnableToggle.checked = false;
+    DOM.syncServerUrl.disabled = true;
+    DOM.btnSyncNow.disabled = true;
+    DOM.syncStatusBadge.className = 'sync-badge inactive';
+    DOM.syncStatusText.textContent = 'Deaktiviert';
+    DOM.syncLastTime.textContent = 'Zuletzt: Nie';
+    return;
+  }
+
+  DOM.syncDetailsContainer.classList.remove('disabled');
+  DOM.syncEnableToggle.checked = true;
+  DOM.syncServerUrl.disabled = false;
+  DOM.syncServerUrl.value = state.syncUrl;
+  DOM.btnSyncNow.disabled = isSyncing;
+  
+  if (status === 'syncing') {
+    DOM.syncStatusBadge.className = 'sync-badge syncing';
+    DOM.syncStatusText.textContent = 'Verbinden...';
+  } else if (status === 'synced') {
+    DOM.syncStatusBadge.className = 'sync-badge synced';
+    DOM.syncStatusText.textContent = 'Verbunden';
+  } else if (status === 'offline') {
+    DOM.syncStatusBadge.className = 'sync-badge offline';
+    DOM.syncStatusText.textContent = 'Offline';
+  } else if (status === 'error') {
+    DOM.syncStatusBadge.className = 'sync-badge error';
+    DOM.syncStatusText.textContent = 'Sync-Fehler';
+  } else {
+    // Default / Check status
+    DOM.syncStatusBadge.className = 'sync-badge synced';
+    DOM.syncStatusText.textContent = 'Bereit';
+  }
+
+  if (state.lastSyncTime) {
+    const d = new Date(state.lastSyncTime);
+    const timeStr = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    DOM.syncLastTime.textContent = `Zuletzt: heute ${timeStr}`;
+  } else {
+    DOM.syncLastTime.textContent = 'Zuletzt: Nie';
+  }
+}
+
+function handleSyncToggle(e) {
+  state.syncEnabled = e.target.checked;
+  saveSyncConfig();
+  updateSyncUI();
+  
+  if (state.syncEnabled) {
+    syncWithServer(true);
+  }
+}
+
+function handleSyncUrlChange(e) {
+  state.syncUrl = e.target.value.trim() || window.location.origin;
+  saveSyncConfig();
+}
+
+async function syncWithServer(showFeedback = false) {
+  if (!state.syncEnabled || isSyncing) return;
+  
+  if (!navigator.onLine) {
+    updateSyncUI('offline');
+    if (showFeedback) alert('Du bist offline. Synchronisierung nicht möglich.');
+    return;
+  }
+
+  isSyncing = true;
+  updateSyncUI('syncing');
+
+  const targetUrl = `${state.syncUrl}/api/sync`;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 seconds timeout
+
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ entries: state.entries }),
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(`HTTP-Fehler: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (data && Array.isArray(data.entries)) {
+      // Merge logic: in client we overwrite local database with the server database
+      state.entries = data.entries;
+      sortEntries();
+      state.lastSyncTime = Date.now();
+      
+      saveData();
+      saveSyncConfig();
+      
+      isSyncing = false;
+      updateSyncUI('synced');
+      
+      // Update view tables & dropdowns
+      renderAll();
+      
+      if (showFeedback) {
+        alert('Synchronisierung erfolgreich!');
+      }
+    } else {
+      throw new Error('Ungültiges Datenformat vom Server.');
+    }
+  } catch (err) {
+    console.warn('Sync failed:', err);
+    isSyncing = false;
+    updateSyncUI('error');
+    if (showFeedback) {
+      alert(`Synchronisierung fehlgeschlagen:\n${err.message || 'Server nicht erreichbar'}`);
+    }
+  }
+}
+
+// Window connectivity listener
+window.addEventListener('online', () => {
+  if (state.syncEnabled) {
+    syncWithServer();
+  }
+});

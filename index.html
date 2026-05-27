@@ -207,14 +207,58 @@
             </div>
           </div>
           
-          <div class="settings-action-item">
+          <div class="settings-action-item theme-section">
             <div class="action-info">
               <h3>Farbschema</h3>
-              <p>Wechsle zwischen hellem und dunklem Erscheinungsbild.</p>
+              <p>Wähle dein bevorzugtes Erscheinungsbild.</p>
             </div>
-            <button id="btn-toggle-theme" class="btn btn-secondary">
-              Theme wechseln
-            </button>
+            <div class="theme-selector-grid">
+              <button class="theme-select-btn" data-theme-val="dark">
+                <span class="theme-dot theme-dot-dark"></span>
+                Dunkel
+              </button>
+              <button class="theme-select-btn" data-theme-val="light">
+                <span class="theme-dot theme-dot-light"></span>
+                Hell
+              </button>
+              <button class="theme-select-btn" data-theme-val="rosa">
+                <span class="theme-dot theme-dot-rosa"></span>
+                Rosa
+              </button>
+            </div>
+          </div>
+
+          <hr class="divider">
+
+          <div class="settings-action-item sync-section">
+            <div class="action-info">
+              <h3>Online-Synchronisierung</h3>
+              <p>Einträge online speichern und mit anderen Geräten teilen.</p>
+            </div>
+            <label class="switch-toggle" for="sync-enable-toggle">
+              <input type="checkbox" id="sync-enable-toggle">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+
+          <div id="sync-details-container" class="sync-details-wrap disabled">
+            <div class="sync-input-row-container">
+              <label for="sync-server-url">Sync-Server-URL</label>
+              <div class="sync-input-row">
+                <input type="url" id="sync-server-url" class="custom-input" placeholder="http://192.168.1.100:3000">
+                <button id="btn-sync-now" class="btn btn-secondary" disabled>Synchronisieren</button>
+              </div>
+            </div>
+            <div class="sync-status-display">
+              <div class="sync-status-left">
+                <span class="status-label">Status:</span>
+                <div id="sync-status-badge" class="sync-badge inactive">
+                  <span class="sync-badge-dot"></span>
+                  <span id="sync-status-text">Deaktiviert</span>
+                </div>
+              </div>
+              <span class="sync-last-time" id="sync-last-time">Zuletzt: Nie</span>
+            </div>
           </div>
 
           <div class="settings-action-item danger-zone">

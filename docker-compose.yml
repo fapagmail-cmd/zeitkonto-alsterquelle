@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  zeitkonto:
+    build: .
+    container_name: zeitkonto-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=3000

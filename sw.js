@@ -37,6 +37,12 @@ self.addEventListener('activate', (e) => {
 
 // Fetch Event - offline-first asset serving
 self.addEventListener('fetch', (e) => {
+  // Bypass cache for API endpoints
+  if (e.request.url.includes('/api/')) {
+    e.respondWith(fetch(e.request));
+    return;
+  }
+
   e.respondWith(
     caches.match(e.request).then((cachedResponse) => {
       // Return cached version or fetch from network
@@ -49,3 +55,4 @@ self.addEventListener('fetch', (e) => {
     })
   );
 });
+

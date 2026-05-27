@@ -1,0 +1,13 @@
+{
+  "name": "zeitkonto-alsterquelle",
+  "version": "1.1.0",
+  "description": "Hausmeister Zeiterfassung mit Online-Synchronisierung",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {}
+}
